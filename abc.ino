@@ -69,7 +69,7 @@ MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
 )EOF";
 
 DHT dht(13, DHT11);
-const int led_pin = 27;
+const int led_pin = 2;
 const int buzzer_button=26;
 const int switch_button=4;
 unsigned long flag_button=0;
@@ -80,6 +80,8 @@ void TaskRTC(void *pvParameters);
 void TaskButton(void *pvParameters);
 
 TaskHandle_t firebase_task_handle_blue;
+TaskHandle_t firebase_task_handle_RTC;
+TaskHandle_t firebase_task_handle_Button;
 
 RTC_DS1307 DS1307_RTC;
 
@@ -116,8 +118,8 @@ void connectEthernet() {
 
 void setup() {
     Serial.begin(115200);
-    DS1307_RTC.begin();
-    DS1307_RTC.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // DS1307_RTC.begin();
+    // DS1307_RTC.adjust(DateTime(F(__DATE__), F(__TIME__)));
     SerialBT.begin("12325r2535353464"); 
     Serial.println("The device started, now you can pair it with Bluetooth!"); 
     xTaskCreatePinnedToCore(
@@ -129,43 +131,44 @@ void setup() {
     &firebase_task_handle_blue,
     1
   );
-    xTaskCreatePinnedToCore(
-    TaskRTC,
-    "RTC Task",
-    2048 ,
-    NULL,
-    1,
-    &firebase_task_handle_blue,
-    1
-  );
-  xTaskCreatePinnedToCore(
-    TaskButton,
-    "Button Task",
-    2048 ,
-    NULL,
-    1,
-    &firebase_task_handle_blue,
-    1
-  );
-    dht.begin();
 
-    pinMode(led_pin, OUTPUT);
-    // pinMode(buzzer_button, OUTPUT);
-    pinMode(switch_button, INPUT);
+  // xTaskCreatePinnedToCore(
+  //   TaskRTC,
+  //   "RTC Task",
+  //   2048 ,
+  //   NULL,
+  //   1,
+  //   &firebase_task_handle_RTC,
+  //   1
+  // );
+  // xTaskCreatePinnedToCore(
+  //   TaskButton,
+  //   "Button Task",
+  //   2048 ,
+  //   NULL,
+  //   1,
+  //   &firebase_task_handle_Button,
+  //   1
+  // );
+  dht.begin();
 
-    delay(2000);
-    setupWiFi();
-    delay(300);
-    if(WiFi.status() == WL_CONNECTED){
-      client.setClient(wifiClient);
-      client.setKeepAlive(1); 
-      wifiClient.setTimeout(1000); 
-      client.setServer(mqtt_server, mqtt_port);
-      client.setCallback(callback);
-      connectMQTT();
-    }
+  pinMode(led_pin, OUTPUT);
+  pinMode(buzzer_button, OUTPUT);
+  pinMode(switch_button, INPUT);
 
-    delay(200);
+  delay(2000);
+  setupWiFi();
+  delay(300);
+  if(WiFi.status() == WL_CONNECTED){
+    client.setClient(wifiClient);
+    client.setKeepAlive(1); 
+    wifiClient.setTimeout(1000); 
+    client.setServer(mqtt_server, mqtt_port);
+    client.setCallback(callback);
+    connectMQTT();
+  }
+
+  delay(200);
 }
 
 void loop() {
@@ -194,7 +197,7 @@ void loop() {
       client.publish("dhtTemp", String(dht.readTemperature()).c_str());
       client.publish("dhtHum", String(dht.readHumidity()).c_str());
     }else{
-      Serial.println("Mat ket noi server");
+      Serial.println("Mat ket noi server1");
       if(WiFi.status() != WL_CONNECTED && ethConnectRetry<2){
       Serial.println("WiFi disconnected, connecting to Ethernet...");
       connectEthernet();
@@ -207,29 +210,29 @@ void loop() {
 }
 
 void connectMQTT() {
-    while (!client.connected()) {
-        Serial.print("Attempting MQTT connection…");
-        String clientId = "ESP32Client-";
-        clientId += String(random(0xffff), HEX);
-        curRetryMqtt++;
-        if (curRetryMqtt > max_retry_mqtt) {
-            Serial.print("MQTT connection failed");
-            break;
-        }
-        if (client.connect(clientId.c_str(), mqtt_username, mqtt_password,"lastWillTopic",2,true,"Offline")) {
-            Serial.println("connected");
-            client.subscribe(led_Topic);
-            client.subscribe(temp_humid_Topic);
-            client.subscribe(reboot_Topic);
-            delay(1500);
-            client.publish("lastWillTopic","Online");
-        } else {
-            Serial.print("failed, rc=");
-            Serial.print(client.state());
-            Serial.println(" try again in 3 seconds");
-            delay(3000);
-        }
+  while (!client.connected()) {
+      Serial.print("Attempting MQTT connection…");
+      String clientId = "ESP32Client-";
+      clientId += String(random(0xffff), HEX);
+      curRetryMqtt++;
+      if (curRetryMqtt > max_retry_mqtt) {
+        Serial.print("MQTT connection failed");
+        break;
+      }
+      if (client.connect(clientId.c_str(), mqtt_username, mqtt_password,"lastWillTopic",2,true,"Offline")) {
+        Serial.println("connected");
+        client.subscribe(led_Topic);
+        client.subscribe(temp_humid_Topic);
+        client.subscribe(reboot_Topic);
+        delay(1500);
+        client.publish("lastWillTopic","Online");
+      } else {
+        Serial.print("failed, rc=");
+        Serial.print(client.state());
+        Serial.println(" try again in 3 seconds");
+        delay(3000);
     }
+  }
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -448,10 +451,12 @@ void taskButton(){
   if(digitalRead(switch_button)==0){
     delay(20);
     if(digitalRead(switch_button)==0){
-      if(client.connected()){
+      if(WiFi.status() == WL_CONNECTED || Ethernet.linkStatus() == LinkON){
+        if(client.connected()){
         client.publish("led_status","ON");
-      }else{
-        Serial.println("Mat ket noi server");
+        }else{
+          Serial.println("Mat ket noi server");
+        }
       }
       while(digitalRead(switch_button)==0){
       digitalWrite(led_pin,1);
@@ -459,10 +464,12 @@ void taskButton(){
       }
       digitalWrite(led_pin,0);
       digitalWrite(buzzer_button,0);
-      if(client.connected()){
+      if(WiFi.status() == WL_CONNECTED || Ethernet.linkStatus() == LinkON){
+        if(client.connected()){
         client.publish("led_status","OFF");
-      }else{
-        Serial.println("Mat ket noi server");
+        }else{
+          Serial.println("Mat ket noi server");
+        }
       }
     }
   }
