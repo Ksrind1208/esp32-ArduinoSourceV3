@@ -24,9 +24,6 @@
 #define ETHERNET_RESET_PIN -1
 #define ETHERNET_CS_PIN 5
 
-#define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-
 //Khai báo biến
 BluetoothSerial SerialBT;
 String message = ""; 
@@ -172,38 +169,41 @@ void setup() {
 }
 
 void loop() {
-    // Check WiFi connection status
-    if (WiFi.status() != WL_CONNECTED && ethConnectRetry<2 ) {
-        Serial.println("WiFi disconnected, connecting to Ethernet...");
-        connectEthernet();
-        ethConnectRetry++;
+  // Check WiFi connection status
+  if (WiFi.status() != WL_CONNECTED && ethConnectRetry<2 ) {
+      Serial.println("WiFi disconnected, connecting to Ethernet...");
+      connectEthernet();
+      ethConnectRetry++;
+  }
+  delay(10);
+  if (WiFi.status() == WL_CONNECTED || Ethernet.linkStatus() == LinkON) {
+    client.loop();
+  }
+  delay(10);
+
+  unsigned long now = millis();
+  if (now - lastMsg > 2000) {
+    lastMsg = now;
+    float temp = dht.readTemperature();
+    float humid = dht.readHumidity();
+
+    String data = "";
+    data += (String(temp, 2) + "-" + String(humid, 2));
+    if(client.connected()){
+      client.publish(temp_humid_Topic, data.c_str());
+      client.publish("dhtTemp", String(dht.readTemperature()).c_str());
+      client.publish("dhtHum", String(dht.readHumidity()).c_str());
+    }else{
+      Serial.println("Mat ket noi server");
+      if(WiFi.status() != WL_CONNECTED && ethConnectRetry<2){
+      Serial.println("WiFi disconnected, connecting to Ethernet...");
+      connectEthernet();
+      ethConnectRetry++;
+      }else{
+        connectMQTT();
+      }    
     }
-    delay(10);
-    if (WiFi.status() == WL_CONNECTED || Ethernet.linkStatus() == LinkON) {
-      client.loop();
-    }
-    delay(10);
-
-    unsigned long now = millis();
-    if (now - lastMsg > 2000) {
-        lastMsg = now;
-        float temp = dht.readTemperature();
-        float humid = dht.readHumidity();
-
-        String data = "";
-        data += (String(temp, 2) + "-" + String(humid, 2));
-        if(client.connected()){
-          client.publish(temp_humid_Topic, data.c_str());
-          client.publish("dhtTemp", String(dht.readTemperature()).c_str());
-          client.publish("dhtHum", String(dht.readHumidity()).c_str());
-        }else{
-          Serial.println("Mat ket noi server");
-          connectMQTT();
-        }
-
-    }
-
-
+  }
 }
 
 void connectMQTT() {
