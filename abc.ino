@@ -35,7 +35,7 @@ unsigned long previousMillisDHT = 0;
 unsigned long previousMillisRTC = 0;  
 unsigned long previousMillisRestart=0;
 const long interval = 2000; 
-const long intervalRestart=4000;
+const long intervalRestartWiFi=4000;
 
 bool shouldSaveConfig = false;
 WiFiManager wm;
@@ -71,7 +71,7 @@ MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
 )EOF";
 
 DHT dht(13, DHT11);
-const int led_pin = 2;
+const int led_pin = 27;
 const int buzzer_button=26;
 const int switch_button=4;
 unsigned long flag_button=0;
@@ -142,20 +142,20 @@ void setup() {
     &firebase_task_handle_RTC,
     1
   );
-  // xTaskCreatePinnedToCore(
-  //   TaskButton,
-  //   "Button Task",
-  //   2048 ,
-  //   NULL,
-  //   1,
-  //   &firebase_task_handle_Button,
-  //   1
-  // );
+  xTaskCreatePinnedToCore(
+    TaskButton,
+    "Button Task",
+    2048 ,
+    NULL,
+    1,
+    &firebase_task_handle_Button,
+    1
+  );
   dht.begin();
 
-  pinMode(led_pin, OUTPUT);
-  pinMode(buzzer_button, OUTPUT);
   pinMode(switch_button, INPUT);
+  pinMode(led_pin, OUTPUT);
+  // pinMode(buzzer_button, OUTPUT);
 
   delay(2000);
   setupWiFi();
@@ -217,7 +217,7 @@ void connectMQTT() {
     clientId += String(random(0xffff), HEX);
     curRetryMqtt++;
     if (curRetryMqtt > max_retry_mqtt) {
-      Serial.print("MQTT connection failed");
+      Serial.println("MQTT connection failed");
       curRetryMqtt=0;
       break;
     }
@@ -330,7 +330,7 @@ void setupWiFi() {
   wm.resetSettings();
   wm.setSaveConfigCallback(saveConfigCallback);
   wm.setAPCallback(configModeCallback);
-  if (!wm.autoConnect("ESP32_Manager_AP1312313321", "1234567890")) {
+  if (!wm.autoConnect("ESP32_Manager_APTestThoi", "1234567890")) {
       Serial.println("Failed to connect and hit timeout");
       delay(3000);
       ESP.restart();
@@ -465,8 +465,8 @@ void taskButton(){
         digitalWrite(led_pin,1);
         digitalWrite(buzzer_button,1);
         currentMillis=millis();
-        if (currentMillis - previousMillisRestart >= intervalRestart) { 
-          ESP.restart();
+        if (currentMillis - previousMillisRestart >= intervalRestartWiFi) { 
+          WiFi.disconnect();
         }
       }
       digitalWrite(led_pin,0);
